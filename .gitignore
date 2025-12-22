@@ -11,7 +11,6 @@ dist/
 # Database
 *.db
 *.db-journal
-prisma/migrations/
 
 # IDE
 .idea/
@@ -26,6 +25,7 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+logs/
 
 # Test
 coverage/

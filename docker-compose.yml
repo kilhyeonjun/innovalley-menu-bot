@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  menu-bot:
+    build: .
+    container_name: menu-bot
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/menu.db
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+      - SLACK_CHANNEL_ID=${SLACK_CHANNEL_ID}
+      - KAKAO_CHANNEL_URL=https://pf.kakao.com/_LCxlxlxb/posts
+      - PORT=3000
+    volumes:
+      - menu-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  menu-data:
+    driver: local
