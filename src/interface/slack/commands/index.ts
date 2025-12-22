@@ -1,0 +1,1 @@
+export { registerMenuCommand } from './MenuCommand';
