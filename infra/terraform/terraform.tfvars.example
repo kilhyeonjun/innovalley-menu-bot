@@ -1,0 +1,45 @@
+# ============================================
+# OCI 인증 정보
+# Oracle Cloud Console → Profile → API Keys에서 확인
+# ============================================
+
+tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+user_ocid        = "ocid1.user.oc1..aaaaaaaaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+fingerprint      = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+private_key_path = "~/.oci/oci_api_key.pem"
+
+# 리전 선택 (Free Tier는 Home Region에서만 가능)
+# ap-seoul-1     : 서울
+# ap-tokyo-1     : 도쿄
+# ap-osaka-1     : 오사카
+# us-ashburn-1   : 미국 동부
+# us-phoenix-1   : 미국 서부 (ARM 가용성 높음)
+region = "ap-seoul-1"
+
+# Compartment (비워두면 tenancy 루트 사용)
+compartment_ocid = ""
+
+# ============================================
+# 인스턴스 설정
+# ============================================
+
+instance_name = "menu-bot"
+
+# Free Tier ARM Shape
+instance_shape     = "VM.Standard.A1.Flex"
+instance_ocpus     = 2    # 최대 4 OCPU
+instance_memory_gb = 12   # 최대 24 GB
+
+# 부트 볼륨 (Free Tier: 최대 200GB 총량)
+boot_volume_size_gb = 50
+
+# ============================================
+# SSH 키
+# ============================================
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+
+# ============================================
+# 네트워크 (기본값 사용 권장)
+# ============================================
+# vcn_cidr    = "10.0.0.0/16"
+# subnet_cidr = "10.0.1.0/24"
