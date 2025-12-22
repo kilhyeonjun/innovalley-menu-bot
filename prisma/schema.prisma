@@ -1,0 +1,34 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model MenuPost {
+  id          String   @id @default(uuid())
+  postId      String   @unique
+  title       String
+  imageUrl    String
+  publishedAt DateTime
+  crawledAt   DateTime @default(now())
+
+  deliveryHistories DeliveryHistory[]
+
+  @@map("menu_posts")
+}
+
+model DeliveryHistory {
+  id        String   @id @default(uuid())
+  postId    String
+  channel   String
+  sentAt    DateTime @default(now())
+
+  menuPost MenuPost @relation(fields: [postId], references: [postId])
+
+  @@unique([postId, channel])
+  @@map("delivery_histories")
+}
