@@ -1,5 +1,5 @@
 import { injectable, inject } from 'tsyringe';
-import { CronJob } from 'cron';
+import cron, { ScheduledTask } from 'node-cron';
 import { CheckAndSendMenuUseCase } from '@application/use-cases';
 
 /**
@@ -8,7 +8,7 @@ import { CheckAndSendMenuUseCase } from '@application/use-cases';
  */
 @injectable()
 export class CronScheduler {
-  private job: CronJob | null = null;
+  private task: ScheduledTask | null = null;
 
   constructor(
     @inject(CheckAndSendMenuUseCase)
@@ -17,7 +17,7 @@ export class CronScheduler {
 
   /**
    * 스케줄러 시작
-   * @param cronExpression cron 표현식 (기본: 매주 월요일 09:00 KST)
+   * @param cronExpression cron 표현식 (기본: 매주 월요일 09:00)
    */
   start(cronExpression = '0 9 * * 1'): void {
     const channel = process.env.SLACK_CHANNEL_ID;
@@ -27,7 +27,7 @@ export class CronScheduler {
       return;
     }
 
-    this.job = new CronJob(
+    this.task = cron.schedule(
       cronExpression,
       async () => {
         console.log('[Scheduler] 주간 식단표 발송 작업 시작');
@@ -58,9 +58,9 @@ export class CronScheduler {
           console.warn(`[Scheduler] 발송 실패: ${attemptCount}번 시도 후 포기`);
         }
       },
-      null,
-      true,
-      'Asia/Seoul'
+      {
+        timezone: 'Asia/Seoul',
+      }
     );
 
     console.log('[Scheduler] 스케줄러 시작됨 (매주 월요일 09:00 KST)');
@@ -70,9 +70,9 @@ export class CronScheduler {
    * 스케줄러 중지
    */
   stop(): void {
-    if (this.job) {
-      this.job.stop();
-      this.job = null;
+    if (this.task) {
+      this.task.stop();
+      this.task = null;
       console.log('[Scheduler] 스케줄러 중지됨');
     }
   }

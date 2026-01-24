@@ -1,11 +1,8 @@
 import { container } from 'tsyringe';
-import { App } from '@slack/bolt';
+import { App, KnownBlock } from '@slack/bolt';
 import { GetCurrentMenuUseCase } from '@application/use-cases';
 import { SlackMessageBuilder } from '@infrastructure/slack';
 
-/**
- * /식단 슬래시 커맨드 핸들러 등록
- */
 export function registerMenuCommand(app: App): void {
   // /식단 커맨드 등록
   app.command('/식단', async ({ command, ack, respond }) => {
@@ -36,22 +33,20 @@ export function registerMenuCommand(app: App): void {
 
       const { post, source } = result.value;
 
-      // 성공 메시지
+      const sourceBlock: KnownBlock = {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: source === 'cache' ? '💾 캐시에서 조회' : '🔄 새로 크롤링',
+          },
+        ],
+      };
+
       await respond({
         response_type: 'ephemeral',
         replace_original: true,
-        blocks: [
-          ...SlackMessageBuilder.buildMenuBlocks(post),
-          {
-            type: 'context',
-            elements: [
-              {
-                type: 'mrkdwn',
-                text: source === 'cache' ? '💾 캐시에서 조회' : '🔄 새로 크롤링',
-              },
-            ],
-          },
-        ],
+        blocks: [...SlackMessageBuilder.buildMenuBlocks(post), sourceBlock],
       });
     } catch (error) {
       console.error('[MenuCommand] 에러:', error);

@@ -1,14 +1,8 @@
 import { MenuPost } from '@domain/entities';
+import { KnownBlock } from '@slack/bolt';
 
-/**
- * Slack 메시지 빌더
- * Block Kit 형식으로 메시지 구성
- */
 export class SlackMessageBuilder {
-  /**
-   * 식단표 메시지 블록 생성
-   */
-  static buildMenuBlocks(menuPost: MenuPost): object[] {
+  static buildMenuBlocks(menuPost: MenuPost): KnownBlock[] {
     const weekRange = menuPost.getWeekRange();
     const rangeText = weekRange
       ? `${weekRange.start} ~ ${weekRange.end}`
@@ -50,10 +44,7 @@ export class SlackMessageBuilder {
     ];
   }
 
-  /**
-   * 에러 메시지 블록 생성
-   */
-  static buildErrorBlocks(message: string): object[] {
+  static buildErrorBlocks(message: string): KnownBlock[] {
     return [
       {
         type: 'section',
@@ -65,10 +56,7 @@ export class SlackMessageBuilder {
     ];
   }
 
-  /**
-   * 로딩 메시지 블록 생성
-   */
-  static buildLoadingBlocks(): object[] {
+  static buildLoadingBlocks(): KnownBlock[] {
     return [
       {
         type: 'section',
