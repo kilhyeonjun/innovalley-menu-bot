@@ -9,7 +9,7 @@ import { ICrawlerService, ISlackService } from '@domain/services';
 import {
   MenuPostRepository,
   DeliveryHistoryRepository,
-  PlaywrightCrawlerService,
+  KakaoApiCrawlerService,
   SlackBotService,
 } from '@infrastructure/index';
 
@@ -38,7 +38,7 @@ export function setupContainer(): void {
   // Services
   container.registerSingleton<ICrawlerService>(
     ICrawlerService,
-    PlaywrightCrawlerService
+    KakaoApiCrawlerService
   );
   container.registerSingleton<ISlackService>(ISlackService, SlackBotService);
 

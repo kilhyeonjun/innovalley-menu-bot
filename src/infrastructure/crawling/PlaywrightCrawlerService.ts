@@ -10,6 +10,7 @@ import { Result } from '@shared/types/Result';
 import { CrawlingError } from '@shared/errors/DomainError';
 
 const DEFAULT_CHANNEL_URL = 'https://pf.kakao.com/_LCxlxlxb/posts';
+const CHANNEL_ID = '_LCxlxlxb';
 
 interface CrawledData {
   postId: string;
@@ -18,10 +19,6 @@ interface CrawledData {
   publishedAt: Date;
 }
 
-/**
- * Playwright 기반 크롤러 서비스
- * 판교 이노밸리 구내식당 카카오 채널 크롤링
- */
 @injectable()
 export class PlaywrightCrawlerService implements ICrawlerService {
   private browser: Browser | null = null;
@@ -43,7 +40,7 @@ export class PlaywrightCrawlerService implements ICrawlerService {
 
       return Result.ok({
         post,
-        isNew: true, // Repository에서 중복 체크
+        isNew: true,
       });
     } catch (error) {
       return Result.fail(
@@ -60,71 +57,91 @@ export class PlaywrightCrawlerService implements ICrawlerService {
     const page = await browser.newPage();
 
     try {
-      await page.goto(url, {
-        waitUntil: 'networkidle',
-        timeout: 30000,
-      });
-
-      // 페이지 로딩 대기
+      await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
       await page.waitForTimeout(2000);
 
-      // 데이터 추출
-      const data = await this.extractData(page);
+      const firstPostInfo = await this.extractFirstPostInfo(page);
 
-      return data;
+      if (!firstPostInfo.postId || !firstPostInfo.title) {
+        throw new Error(`목록에서 게시물 정보를 찾을 수 없습니다`);
+      }
+
+      const detailUrl = `https://pf.kakao.com/${CHANNEL_ID}/${firstPostInfo.postId}`;
+      await page.goto(detailUrl, { waitUntil: 'networkidle', timeout: 30000 });
+      await page.waitForTimeout(2000);
+
+      const imageUrl = await this.extractImageUrl(page);
+
+      if (!imageUrl) {
+        throw new Error(`이미지 URL을 찾을 수 없습니다`);
+      }
+
+      return {
+        postId: firstPostInfo.postId,
+        title: firstPostInfo.title,
+        imageUrl,
+        publishedAt: this.parseDate(firstPostInfo.dateText),
+      };
     } finally {
       await page.close();
     }
   }
 
-  private async extractData(page: Page): Promise<CrawledData> {
-    // 게시물 정보 추출
-    const result = await page.evaluate(() => {
-      // 첫 번째 게시물 카드에서 링크 추출
-      const linkElement = document.querySelector('a[href*="/posts/"]') as HTMLAnchorElement | null;
-      const postUrl = linkElement?.href || '';
-      const postIdMatch = postUrl.match(/\/(\d+)$/);
-      const postId = postIdMatch ? postIdMatch[1] : '';
+  private async extractFirstPostInfo(
+    page: Page
+  ): Promise<{ postId: string; title: string; dateText: string }> {
+    return await page.evaluate((channelId) => {
+      const links = Array.from(document.querySelectorAll('a[href]'));
+      let postId = '';
+      let title = '';
+      let dateText = '';
 
-      // 제목 추출
-      const titleElement = document.querySelector('.tit_card');
-      const title = titleElement?.textContent?.trim() || '';
+      for (const link of links) {
+        const href = link.getAttribute('href') || '';
+        const match = href.match(new RegExp(`/${channelId}/(\\d+)$`));
 
-      // 이미지 URL 추출 (background-image 스타일에서)
-      const imageContainer = document.querySelector('.wrap_fit_thumb') as HTMLElement | null;
-      let imageUrl = '';
-      if (imageContainer) {
-        const bgImage = imageContainer.style.backgroundImage;
-        const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/);
-        imageUrl = urlMatch ? urlMatch[1] : '';
+        if (match) {
+          postId = match[1];
+
+          const strongInLink = link.querySelector('strong');
+          if (strongInLink) {
+            title = strongInLink.textContent?.trim() || '';
+          }
+
+          const parent = link.closest('div, generic, article');
+          if (parent) {
+            const allElements = Array.from(parent.querySelectorAll('div, span'));
+            const dateEl = allElements.find(
+              (el) => /^\d{4}\.\d{2}\.\d{2}\.$/.test(el.textContent?.trim() || '')
+            );
+            dateText = dateEl?.textContent?.trim() || '';
+          }
+
+          if (postId && title) break;
+        }
       }
 
-      // 날짜 추출
-      const dateElement = document.querySelector('.txt_date');
-      const dateText = dateElement?.textContent?.trim() || '';
+      return { postId, title, dateText };
+    }, CHANNEL_ID);
+  }
 
-      return { postId, title, imageUrl, dateText };
+  private async extractImageUrl(page: Page): Promise<string> {
+    return await page.evaluate(() => {
+      const img = document.querySelector('img[alt="이미지"]') as HTMLImageElement | null;
+      if (img?.src) {
+        return img.src.startsWith('http') ? img.src : `https:${img.src}`;
+      }
+
+      const contentImg = document.querySelector('main img, [class*="content"] img') as HTMLImageElement | null;
+      if (contentImg?.src) {
+        return contentImg.src.startsWith('http') ? contentImg.src : `https:${contentImg.src}`;
+      }
+
+      return '';
     });
-
-    if (!result.postId || !result.title || !result.imageUrl) {
-      throw new Error(
-        `필수 데이터 누락: postId=${result.postId}, title=${result.title}, imageUrl=${result.imageUrl ? 'exists' : 'missing'}`
-      );
-    }
-
-    // 날짜 파싱
-    const publishedAt = this.parseDate(result.dateText);
-
-    return {
-      postId: result.postId,
-      title: result.title,
-      imageUrl: result.imageUrl,
-      publishedAt,
-    };
   }
 
   private parseDate(dateText: string): Date {
-    // "2시간 전", "1일 전", "2025.12.22." 등의 형식 처리
     const now = new Date();
 
     if (dateText.includes('시간 전')) {
@@ -142,7 +159,6 @@ export class PlaywrightCrawlerService implements ICrawlerService {
       return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     }
 
-    // YYYY.MM.DD. 형식
     const dateMatch = dateText.match(/(\d{4})\.(\d{1,2})\.(\d{1,2})/);
     if (dateMatch) {
       return new Date(
@@ -152,7 +168,6 @@ export class PlaywrightCrawlerService implements ICrawlerService {
       );
     }
 
-    // 파싱 실패 시 현재 시간
     return now;
   }
 
