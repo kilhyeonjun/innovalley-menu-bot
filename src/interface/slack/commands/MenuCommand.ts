@@ -10,6 +10,7 @@ export function registerMenuCommand(app: App): void {
     await ack();
 
     const { user_id: userId, channel_id: channel } = command;
+    console.log(`[MenuCommand] /식단 호출 (user: ${userId}, channel: ${channel})`);
 
     try {
       // 로딩 메시지 표시
@@ -23,6 +24,7 @@ export function registerMenuCommand(app: App): void {
       const result = await useCase.execute({ userId, channel });
 
       if (result.isError()) {
+        console.warn(`[MenuCommand] 실패: ${result.error.message}`);
         await respond({
           response_type: 'ephemeral',
           replace_original: true,
@@ -32,6 +34,7 @@ export function registerMenuCommand(app: App): void {
       }
 
       const { post, source } = result.value;
+      console.log(`[MenuCommand] 성공: "${post.title}" (source: ${source})`)
 
       const sourceBlock: KnownBlock = {
         type: 'context',
