@@ -66,23 +66,8 @@ export class GetCurrentMenuUseCase {
 
       // 3. 이번 주 게시물이 아니면 에러
       if (!crawledPost.isThisWeek()) {
-        // 가장 최근 게시물이라도 보여주기
-        const latestPost = await this.menuPostRepository.findLatest();
-        if (latestPost) {
-          await this.slackService.sendEphemeralMenu({
-            menuPost: latestPost,
-            channel,
-            userId,
-          });
-
-          return Result.ok({
-            post: latestPost,
-            source: 'cache',
-          });
-        }
-
         return Result.fail(
-          new NotFoundError('이번 주 식단표를 찾을 수 없습니다')
+          new NotFoundError('이번 주 식단표가 아직 업로드되지 않았습니다')
         );
       }
 
