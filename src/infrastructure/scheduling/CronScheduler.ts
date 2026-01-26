@@ -34,8 +34,8 @@ export class CronScheduler {
 
         const result = await this.checkAndSendMenuUseCase.execute({
           channel,
-          maxRetries: 6,
-          retryIntervalMs: 60 * 60 * 1000, // 1시간
+          maxRetries: 12,
+          retryIntervalMs: 10 * 60 * 1000, // 10분
         });
 
         if (result.isError()) {
