@@ -63,22 +63,36 @@ export class CheckAndSendMenuUseCase {
 
     // 2. 폴링 재시도 로직
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      console.log(`[CheckAndSend] 시도 ${attempt}/${maxRetries}`);
+
       try {
         // 2-1. 크롤링 시도
         const crawlResult = await this.crawlerService.crawlLatestMenu();
 
         if (crawlResult.isError()) {
+          console.warn(
+            `[CheckAndSend] 크롤링 실패 (${attempt}/${maxRetries}): ${crawlResult.error.message}`
+          );
           if (attempt === maxRetries) {
             return Result.fail(crawlResult.error);
           }
+          console.log(
+            `[CheckAndSend] ${retryIntervalMs / 1000 / 60}분 후 재시도 예정...`
+          );
           await this.sleep(retryIntervalMs);
           continue;
         }
 
         const { post: crawledPost, isNew } = crawlResult.value;
+        console.log(
+          `[CheckAndSend] 크롤링 성공: "${crawledPost.title}" (isNew: ${isNew})`
+        );
 
         // 2-2. 이번 주 게시물인지 확인
         if (!crawledPost.isThisWeek()) {
+          console.log(
+            `[CheckAndSend] 이번 주 게시물 아님 (${attempt}/${maxRetries}): ${crawledPost.title}`
+          );
           if (attempt === maxRetries) {
             return Result.ok({
               success: false,
@@ -86,6 +100,9 @@ export class CheckAndSendMenuUseCase {
               skipReason: '이번 주 식단표를 찾지 못함',
             });
           }
+          console.log(
+            `[CheckAndSend] ${retryIntervalMs / 1000 / 60}분 후 재시도 예정...`
+          );
           await this.sleep(retryIntervalMs);
           continue;
         }
@@ -134,6 +151,10 @@ export class CheckAndSendMenuUseCase {
           sentAt: new Date(),
         });
       } catch (error) {
+        console.error(
+          `[CheckAndSend] 예외 발생 (${attempt}/${maxRetries}):`,
+          error instanceof Error ? error.message : String(error)
+        );
         if (attempt === maxRetries) {
           return Result.fail(
             new DomainError(
@@ -143,6 +164,9 @@ export class CheckAndSendMenuUseCase {
             )
           );
         }
+        console.log(
+          `[CheckAndSend] ${retryIntervalMs / 1000 / 60}분 후 재시도 예정...`
+        );
         await this.sleep(retryIntervalMs);
       }
     }
