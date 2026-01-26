@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { container } from 'tsyringe';
-import { CrawlWeeklyMenuUseCase } from '@application/use-cases';
+import { CrawlWeeklyMenuUseCase, CheckAndSendMenuUseCase } from '@application/use-cases';
 
 const router = Router();
 
@@ -33,6 +33,44 @@ router.get(
           publishedAt: result.value.post.publishedAt,
           isNewPost: result.value.isNewPost,
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.post(
+  '/send',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const channel = process.env.SLACK_CHANNEL_ID;
+      if (!channel) {
+        res.status(500).json({
+          success: false,
+          error: 'SLACK_CHANNEL_ID 환경변수가 설정되지 않았습니다',
+        });
+        return;
+      }
+
+      const useCase = container.resolve(CheckAndSendMenuUseCase);
+      const result = await useCase.execute({
+        channel,
+        maxRetries: 1,
+        retryIntervalMs: 0,
+      });
+
+      if (result.isError()) {
+        res.status(500).json({
+          success: false,
+          error: result.error.message,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: result.value,
       });
     } catch (error) {
       next(error);
