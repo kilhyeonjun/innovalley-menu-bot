@@ -16,6 +16,12 @@ async function bootstrap(): Promise<void> {
     const slackService = container.resolve(SlackBotService);
     const slackApp = slackService.getSlackApp();
 
+    // 모든 Slack 요청 로깅 미들웨어
+    slackApp.use(async ({ payload, next }) => {
+      console.log(`[Slack] 요청 수신: type=${(payload as { type?: string }).type || 'unknown'}`);
+      await next();
+    });
+
     // 슬래시 커맨드 등록
     registerMenuCommand(slackApp);
 
