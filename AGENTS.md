@@ -274,3 +274,8 @@ beforeEach(async () => {
 |-------|---------|
 | `verify-implementation` | 모든 verify 스킬 순차 실행 → 통합 검증 보고서 생성 |
 | `manage-skills` | 세션 변경사항 분석 → verify 스킬 생성/업데이트/AGENTS.md 관리 |
+| `verify-architecture` | Clean Architecture 레이어 의존성 방향과 경로 별칭 규칙 검증 |
+| `verify-di-container` | TSyringe DI 컨테이너 등록과 인터페이스 토큰 일관성 검증 |
+| `verify-result-pattern` | Result<T,E> 패턴 사용과 에러 처리 규칙 검증 |
+| `verify-domain-entities` | Entity/VO 팩토리 메서드, 불변성, 영속화 패턴 검증 |
+| `verify-testing` | 테스트 파일 구조, 네이밍, 빌더 패턴 사용 검증 |
