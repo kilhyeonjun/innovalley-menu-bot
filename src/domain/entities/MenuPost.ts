@@ -56,14 +56,41 @@ export class MenuPost {
 
   /**
    * 이번 주 게시물인지 확인
+   * 제목의 주간 범위 [MM/DD-MM/DD]를 우선 확인하고,
+   * 없으면 publishedAt 기준으로 판단
    */
   isThisWeek(): boolean {
     const now = new Date();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
+    const thisMonday = new Date(now);
+    const dayOfWeek = now.getDay();
+    const daysSinceMonday = (dayOfWeek + 6) % 7;
+    thisMonday.setDate(now.getDate() - daysSinceMonday);
+    thisMonday.setHours(0, 0, 0, 0);
 
-    return this.publishedAt >= startOfWeek;
+    // 제목에서 주간 범위 추출 시도
+    const weekRange = this.getWeekRange();
+    if (weekRange) {
+      // 제목의 시작 날짜가 이번 주 월요일인지 확인
+      const [startMonth, startDay] = weekRange.start.split('/').map(Number);
+      const titleMonday = new Date(now.getFullYear(), startMonth - 1, startDay);
+
+      // 연말/연초 처리: 1월인데 제목이 12월이면 작년
+      if (now.getMonth() === 0 && startMonth === 12) {
+        titleMonday.setFullYear(now.getFullYear() - 1);
+      }
+      // 12월인데 제목이 1월이면 내년
+      if (now.getMonth() === 11 && startMonth === 1) {
+        titleMonday.setFullYear(now.getFullYear() + 1);
+      }
+
+      return (
+        titleMonday.getMonth() === thisMonday.getMonth() &&
+        titleMonday.getDate() === thisMonday.getDate()
+      );
+    }
+
+    // 제목에서 범위 못 찾으면 기존 publishedAt 로직 사용
+    return this.publishedAt >= thisMonday;
   }
 
   /**

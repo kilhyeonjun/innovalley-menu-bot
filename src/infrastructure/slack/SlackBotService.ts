@@ -38,6 +38,11 @@ export class SlackBotService implements ISlackService {
         ...(appToken && {
           socketMode: true,
           appToken,
+          socketModeOptions: {
+            clientPingTimeout: 15_000,
+            serverPingTimeout: 45_000,
+            pingPongLoggingEnabled: true,
+          },
         }),
       });
     }

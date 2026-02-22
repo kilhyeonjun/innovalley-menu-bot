@@ -32,6 +32,7 @@ WORKDIR /app
 
 # Install dependencies for Prisma and Playwright
 RUN apt-get update && apt-get install -y \
+    tini \
     openssl \
     libssl-dev \
     # Playwright dependencies
@@ -68,7 +69,9 @@ RUN mkdir -p /app/data
 ENV NODE_ENV=production
 ENV DATABASE_URL="file:/app/data/menu.db"
 
+# Use tini as init process for proper signal handling
+ENTRYPOINT ["tini", "--"]
 # Run migrations and start server
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/server.js"]
 
 EXPOSE 3000

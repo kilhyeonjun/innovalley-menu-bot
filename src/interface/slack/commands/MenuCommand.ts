@@ -1,5 +1,6 @@
 import { container } from 'tsyringe';
-import { App, KnownBlock } from '@slack/bolt';
+import { App } from '@slack/bolt';
+import type { KnownBlock } from '@slack/types';
 import { GetCurrentMenuUseCase } from '@application/use-cases';
 import { SlackMessageBuilder } from '@infrastructure/slack';
 

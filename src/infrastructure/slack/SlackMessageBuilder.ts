@@ -1,5 +1,5 @@
 import { MenuPost } from '@domain/entities';
-import { KnownBlock } from '@slack/bolt';
+import type { KnownBlock } from '@slack/types';
 
 export class SlackMessageBuilder {
   static buildMenuBlocks(menuPost: MenuPost): KnownBlock[] {

@@ -43,7 +43,9 @@ export class MenuPostRepository implements IMenuPostRepository {
   async findThisWeek(): Promise<MenuPost | null> {
     const now = new Date();
     const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
+    const dayOfWeek = now.getDay(); // 0=일, 1=월, ..., 6=토
+    const daysSinceMonday = (dayOfWeek + 6) % 7; // 월요일=0, 화요일=1, ..., 일요일=6
+    startOfWeek.setDate(now.getDate() - daysSinceMonday);
     startOfWeek.setHours(0, 0, 0, 0);
 
     const found = await this.prisma.menuPost.findFirst({

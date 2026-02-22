@@ -101,21 +101,28 @@ describe('MenuPost', () => {
       expect(post.isThisWeek()).toBe(false);
     });
 
-    it('일요일에 이번 주 판단이 정확하다', () => {
+    it('일요일에 이번 주 판단이 정확하다 (월요일 기준)', () => {
       // 2024-12-22 일요일로 설정
-      // 주의: JavaScript에서 일요일(0)이 주의 시작
+      // 주의: 월요일 기준 주 시작 (2024-12-16 월요일 ~ 2024-12-22 일요일)
       vi.setSystemTime(new Date('2024-12-22T10:00:00'));
 
-      // 같은 주 일요일 (일요일이 주의 시작)
+      // 같은 주 일요일
       const post = new MenuPostBuilder()
         .withPublishedAt(new Date('2024-12-22T09:00:00'))
         .build();
 
       expect(post.isThisWeek()).toBe(true);
 
-      // 지난 주 토요일은 false
-      const lastWeekPost = new MenuPostBuilder()
+      // 같은 주 토요일도 true
+      const saturdayPost = new MenuPostBuilder()
         .withPublishedAt(new Date('2024-12-21T09:00:00'))
+        .build();
+
+      expect(saturdayPost.isThisWeek()).toBe(true);
+
+      // 지난 주 일요일은 false
+      const lastWeekPost = new MenuPostBuilder()
+        .withPublishedAt(new Date('2024-12-15T09:00:00'))
         .build();
 
       expect(lastWeekPost.isThisWeek()).toBe(false);
