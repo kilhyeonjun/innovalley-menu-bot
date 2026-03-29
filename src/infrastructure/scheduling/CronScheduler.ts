@@ -4,7 +4,7 @@ import { CheckAndSendMenuUseCase } from '@application/use-cases';
 
 /**
  * Cron 스케줄러
- * 매주 월요일 오전 9시에 식단표 발송
+ * 매주 평일 오전 9시에 식단표 발송
  */
 @injectable()
 export class CronScheduler {
@@ -17,9 +17,9 @@ export class CronScheduler {
 
   /**
    * 스케줄러 시작
-   * @param cronExpression cron 표현식 (기본: 매주 월요일 09:00)
+   * @param cronExpression cron 표현식 (기본: 매주 평일 09:00)
    */
-  start(cronExpression = '0 9 * * 1'): void {
+  start(cronExpression = '0 9 * * 1-5'): void {
     const channel = process.env.SLACK_CHANNEL_ID;
 
     if (!channel) {
@@ -63,7 +63,7 @@ export class CronScheduler {
       }
     );
 
-    console.log('[Scheduler] 스케줄러 시작됨 (매주 월요일 09:00 KST)');
+    console.log('[Scheduler] 스케줄러 시작됨 (매주 평일 09:00 KST)');
   }
 
   /**

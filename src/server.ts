@@ -36,7 +36,7 @@ async function bootstrap(): Promise<void> {
   try {
     const scheduler = container.resolve(CronScheduler);
     scheduler.start();
-    console.log('⏰ 스케줄러 시작됨 (매주 월요일 09:00 KST)');
+    console.log('⏰ 스케줄러 시작됨 (매주 평일 09:00 KST)');
   } catch (error) {
     console.warn('⚠️ 스케줄러 초기화 실패:', error);
   }
