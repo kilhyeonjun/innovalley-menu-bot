@@ -25,8 +25,18 @@ async function bootstrap(): Promise<void> {
     // 슬래시 커맨드 등록
     registerMenuCommand(slackApp);
     if (env.slackAppToken) {
-      await slackApp.start();
-      console.log('⚡ Slack Bot 시작됨 (Socket Mode)');
+      // Slack Socket Mode 연결을 백그라운드로 시작.
+      // 외부 인터넷이 끊긴 상황에서 await로 막으면 cron/Express 부팅이 함께 중단되어
+      // /health · /api/menu/send · 주간 스케줄러까지 모두 정지한다. 분리해서 startup deadlock을 막는다.
+      slackApp
+        .start()
+        .then(() => console.log('⚡ Slack Bot 시작됨 (Socket Mode)'))
+        .catch((e) =>
+          console.warn(
+            '⚠️ Slack Bot 시작 실패 (백그라운드 재시도):',
+            e instanceof Error ? e.message : String(e)
+          )
+        );
     }
   } catch (error) {
     console.warn('⚠️ Slack Bot 초기화 실패:', error);

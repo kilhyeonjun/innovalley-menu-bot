@@ -7,6 +7,7 @@ import {
 } from '@domain/services';
 import { Result } from '@shared/types/Result';
 import { CrawlingError } from '@shared/errors/DomainError';
+import { formatErrorCause, captureNetworkDiagnostics } from './networkDiagnostics';
 
 const DEFAULT_CHANNEL_ID = '_LCxlxlxb';
 
@@ -83,9 +84,17 @@ export class KakaoApiCrawlerService implements ICrawlerService {
         isNew: true,
       });
     } catch (error) {
+      const causeStr = formatErrorCause(error);
+      const targetUrl = `https://pf.kakao.com/rocket-web/web/profiles/${channelId}/posts?includePinnedPost=true`;
+      let diag = '';
+      try {
+        diag = await captureNetworkDiagnostics(targetUrl);
+      } catch (diagErr) {
+        diag = `diag-failed:${diagErr instanceof Error ? diagErr.message : String(diagErr)}`;
+      }
       return Result.fail(
         new CrawlingError(
-          `크롤링 실패: ${error instanceof Error ? error.message : String(error)}`,
+          `크롤링 실패: ${causeStr} | net: ${diag}`,
           error
         )
       );
