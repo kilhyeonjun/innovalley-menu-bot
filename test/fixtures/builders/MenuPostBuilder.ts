@@ -14,6 +14,8 @@ interface MenuPostBuilderProps {
  * MenuPost 테스트 빌더
  */
 export class MenuPostBuilder {
+  private explicitTitle = false;
+
   private props: MenuPostBuilderProps = {
     postId: 'test-post-123',
     title: '주간메뉴[12/22-12/26]',
@@ -34,6 +36,7 @@ export class MenuPostBuilder {
 
   withTitle(title: string): this {
     this.props.title = title;
+    this.explicitTitle = true;
     return this;
   }
 
@@ -44,6 +47,9 @@ export class MenuPostBuilder {
 
   withPublishedAt(publishedAt: Date): this {
     this.props.publishedAt = publishedAt;
+    if (!this.explicitTitle) {
+      this.props.title = this.titleForWeekOf(publishedAt);
+    }
     return this;
   }
 
@@ -58,10 +64,9 @@ export class MenuPostBuilder {
   thisWeek(): this {
     const now = new Date();
     const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay() + 1); // 월요일
+    startOfWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // 월요일
     startOfWeek.setHours(9, 0, 0, 0);
-    this.props.publishedAt = startOfWeek;
-    return this;
+    return this.withPublishedAt(startOfWeek);
   }
 
   /**
@@ -71,8 +76,20 @@ export class MenuPostBuilder {
     const now = new Date();
     const lastWeek = new Date(now);
     lastWeek.setDate(now.getDate() - 7);
-    this.props.publishedAt = lastWeek;
-    return this;
+    return this.withPublishedAt(lastWeek);
+  }
+
+  private titleForWeekOf(date: Date): string {
+    const monday = new Date(date);
+    const dayOfWeek = monday.getDay();
+    const daysSinceMonday = (dayOfWeek + 6) % 7;
+    monday.setDate(date.getDate() - daysSinceMonday);
+
+    const friday = new Date(monday);
+    friday.setDate(monday.getDate() + 4);
+
+    const format = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+    return `주간메뉴[${format(monday)}-${format(friday)}]`;
   }
 
   /**

@@ -97,13 +97,9 @@ describe('GetCurrentMenuUseCase', () => {
       expect(mockMenuPostRepository.save).toHaveBeenCalled();
     });
 
-    it('이번 주 게시물이 아니면 최근 게시물을 반환한다', async () => {
+    it('이번 주 게시물이 아니면 NotFoundError를 반환한다', async () => {
       const lastWeekPost = new MenuPostBuilder()
         .withPostId('last-week')
-        .lastWeek()
-        .build();
-      const latestPost = new MenuPostBuilder()
-        .withPostId('latest')
         .lastWeek()
         .build();
 
@@ -111,16 +107,14 @@ describe('GetCurrentMenuUseCase', () => {
       vi.mocked(mockCrawlerService.crawlLatestMenu).mockResolvedValue(
         Result.ok({ post: lastWeekPost, isNew: false })
       );
-      vi.mocked(mockMenuPostRepository.findLatest).mockResolvedValue(latestPost);
-      vi.mocked(mockSlackService.sendEphemeralMenu).mockResolvedValue(
-        Result.ok({ messageTs: '123.456', channel: criteria.channel })
-      );
 
       const result = await useCase.execute(criteria);
 
-      expect(result.isOk()).toBe(true);
-      expect(result.value.source).toBe('cache');
-      expect(result.value.post.postId.value).toBe('latest');
+      expect(result.isError()).toBe(true);
+      expect(result.error).toBeInstanceOf(NotFoundError);
+      expect(result.error.message).toContain('아직 업로드되지 않았습니다');
+      expect(mockMenuPostRepository.findLatest).not.toHaveBeenCalled();
+      expect(mockSlackService.sendEphemeralMenu).not.toHaveBeenCalled();
     });
 
     it('이번 주 게시물도 없고 최근 게시물도 없으면 NotFoundError', async () => {
@@ -139,7 +133,7 @@ describe('GetCurrentMenuUseCase', () => {
 
       expect(result.isError()).toBe(true);
       expect(result.error).toBeInstanceOf(NotFoundError);
-      expect(result.error.message).toContain('찾을 수 없습니다');
+      expect(result.error.message).toContain('아직 업로드되지 않았습니다');
     });
 
     it('크롤링 실패 시 에러 반환', async () => {
