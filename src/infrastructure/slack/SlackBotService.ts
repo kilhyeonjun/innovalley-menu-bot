@@ -58,11 +58,24 @@ export class SlackBotService implements ISlackService {
       const app = this.getApp();
       const blocks = SlackMessageBuilder.buildMenuBlocks(menuPost);
 
-      const result = await app.client.chat.postMessage({
+      const message = {
         channel,
         blocks,
         text: `🍽️ ${menuPost.title}`, // 알림용 fallback 텍스트
-      });
+      };
+      let result;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          result = await app.client.chat.postMessage(message);
+          break;
+        } catch (error) {
+          if (!this.isImageDownloadFailure(error) || attempt === 3) {
+            throw error;
+          }
+          console.warn(`[Slack] 외부 이미지 다운로드 실패, 이미지 유지 재시도 (${attempt}/3)`);
+          await this.sleep(attempt * 1_000);
+        }
+      }
 
       if (!result.ok || !result.ts) {
         return Result.fail(
@@ -125,5 +138,25 @@ export class SlackBotService implements ISlackService {
    */
   getSlackApp(): App {
     return this.getApp();
+  }
+
+  private isImageDownloadFailure(error: unknown): boolean {
+    const data = (error as {
+      data?: { error?: unknown; response_metadata?: { messages?: unknown } };
+    })?.data;
+    return (
+      data?.error === 'invalid_blocks' &&
+      Array.isArray(data.response_metadata?.messages) &&
+      data.response_metadata.messages.some(
+        (message) =>
+          typeof message === 'string' &&
+          message.includes('downloading image failed') &&
+          /\/blocks\/\d+\/image_url/.test(message)
+      )
+    );
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
