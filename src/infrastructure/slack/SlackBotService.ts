@@ -56,37 +56,30 @@ export class SlackBotService implements ISlackService {
 
     try {
       const app = this.getApp();
-      const blocks = SlackMessageBuilder.buildMenuBlocks(menuPost);
-
-      const message = {
-        channel,
-        blocks,
-        text: `🍽️ ${menuPost.title}`, // 알림용 fallback 텍스트
+      const image = await this.downloadImage(menuPost.imageUrl.value);
+      const upload = (await app.client.files.uploadV2({
+        file: image,
+        filename: `innovalley-menu-${menuPost.postId.value}.jpg`,
+        title: menuPost.title,
+        channel_id: channel,
+        initial_comment: `🍽️ ${menuPost.title}`,
+      })) as {
+        files?: Array<{
+          files?: Array<{
+            id?: string;
+            shares?: { public?: Record<string, Array<{ ts?: string }>> };
+          }>;
+        }>;
       };
-      let result;
-      for (let attempt = 1; ; attempt++) {
-        try {
-          result = await app.client.chat.postMessage(message);
-          break;
-        } catch (error) {
-          if (!this.isImageDownloadFailure(error) || attempt === 3) {
-            throw error;
-          }
-          console.warn(`[Slack] 외부 이미지 다운로드 실패, 이미지 유지 재시도 (${attempt}/3)`);
-          await this.sleep(attempt * 1_000);
-        }
-      }
-
-      if (!result.ok || !result.ts) {
+      const uploadedFile = upload.files?.[0]?.files?.[0];
+      const messageTs = uploadedFile?.shares?.public?.[channel]?.[0]?.ts ?? uploadedFile?.id;
+      if (!messageTs) {
         return Result.fail(
-          new SlackDeliveryError(`Slack API 에러: ${result.error || 'unknown'}`)
+          new SlackDeliveryError('Slack 이미지 파일 발송 결과에 message timestamp가 없습니다')
         );
       }
 
-      return Result.ok({
-        messageTs: result.ts,
-        channel: result.channel || channel,
-      });
+      return Result.ok({ messageTs, channel });
     } catch (error) {
       return Result.fail(
         new SlackDeliveryError(
@@ -140,23 +133,15 @@ export class SlackBotService implements ISlackService {
     return this.getApp();
   }
 
-  private isImageDownloadFailure(error: unknown): boolean {
-    const data = (error as {
-      data?: { error?: unknown; response_metadata?: { messages?: unknown } };
-    })?.data;
-    return (
-      data?.error === 'invalid_blocks' &&
-      Array.isArray(data.response_metadata?.messages) &&
-      data.response_metadata.messages.some(
-        (message) =>
-          typeof message === 'string' &&
-          message.includes('downloading image failed') &&
-          /\/blocks\/\d+\/image_url/.test(message)
-      )
-    );
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  private async downloadImage(url: string): Promise<Buffer> {
+    const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) {
+      throw new Error(`메뉴 이미지 다운로드 실패: HTTP ${response.status}`);
+    }
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.startsWith('image/')) {
+      throw new Error(`메뉴 이미지 형식 오류: ${contentType || 'unknown'}`);
+    }
+    return Buffer.from(await response.arrayBuffer());
   }
 }

@@ -2,26 +2,33 @@ import { describe, expect, it, vi } from 'vitest';
 import { SlackBotService } from '@infrastructure/slack/SlackBotService';
 import { MenuPostBuilder } from '../../fixtures/builders';
 
+function mockUploadResponse() {
+  return {
+    ok: true,
+    files: [
+      {
+        files: [
+          { id: 'F123', shares: { public: { C123: [{ ts: '123.456' }] } } },
+        ],
+      },
+    ],
+  };
+}
+
 describe('SlackBotService', () => {
-  it('Slack이 외부 이미지를 받지 못하면 이미지 블록을 유지해 재시도한다', async () => {
-    const imageError = {
-      data: {
-        error: 'invalid_blocks',
-        response_metadata: {
-          messages: [
-            '[ERROR] bolt-app downloading image failed [json-pointer:/blocks/2/image_url]',
-          ],
-        },
+  it('메뉴 이미지를 대상 채널에 Slack 파일로 발송한다', async () => {
+    const postMessage = vi.fn();
+    const filesUploadV2 = vi.fn().mockResolvedValue(mockUploadResponse());
+    const service = new SlackBotService();
+    (service as unknown as { app: object }).app = {
+      client: {
+        chat: { postMessage },
+        files: { uploadV2: filesUploadV2 },
       },
     };
-    const postMessage = vi
-      .fn()
-      .mockRejectedValueOnce(imageError)
-      .mockRejectedValueOnce(imageError)
-      .mockResolvedValueOnce({ ok: true, ts: '123.456', channel: 'C123' });
-    const service = new SlackBotService();
-    (service as unknown as { app: object }).app = { client: { chat: { postMessage } } };
-    vi.spyOn(service as never, 'sleep').mockResolvedValue(undefined as never);
+    vi.spyOn(service as never, 'downloadImage').mockResolvedValue(
+      Buffer.from('jpeg') as never
+    );
 
     const result = await service.sendMenuMessage({
       menuPost: new MenuPostBuilder().build(),
@@ -29,27 +36,26 @@ describe('SlackBotService', () => {
     });
 
     expect(result.isOk()).toBe(true);
-    expect(postMessage).toHaveBeenCalledTimes(3);
-    for (const [message] of postMessage.mock.calls) {
-      expect(message.blocks).toContainEqual(expect.objectContaining({ type: 'image' }));
-    }
+    const uploadCriteria = filesUploadV2.mock.calls[0][0];
+    expect(Buffer.isBuffer(uploadCriteria.file)).toBe(true);
+    expect(uploadCriteria.filename).toMatch(/\.jpg$/);
+    expect(uploadCriteria.channel_id).toBe('C123');
+    expect(uploadCriteria.initial_comment).toContain('🍽️');
+    expect(postMessage).not.toHaveBeenCalled();
   });
 
-  it.each([
-    new Error('channel_not_found'),
-    {
-      data: {
-        error: 'channel_not_found',
-        response_metadata: {
-          messages: ['downloading image failed [json-pointer:/blocks/2/image_url]'],
-        },
-      },
-    },
-  ])('이미지와 무관한 Slack 오류는 재발송하지 않는다', async (slackError) => {
-    const postMessage = vi.fn().mockRejectedValueOnce(slackError);
+  it('Slack 파일 발송 오류를 반환한다', async () => {
+    const uploadError = new Error('channel_not_found');
+    const filesUploadV2 = vi.fn().mockRejectedValueOnce(uploadError);
     const service = new SlackBotService();
-    (service as unknown as { app: object }).app = { client: { chat: { postMessage } } };
-    vi.spyOn(service as never, 'sleep').mockResolvedValue(undefined as never);
+    (service as unknown as { app: object }).app = {
+      client: {
+        files: { uploadV2: filesUploadV2 },
+      },
+    };
+    vi.spyOn(service as never, 'downloadImage').mockResolvedValue(
+      Buffer.from('jpeg') as never
+    );
 
     const result = await service.sendMenuMessage({
       menuPost: new MenuPostBuilder().build(),
@@ -57,6 +63,6 @@ describe('SlackBotService', () => {
     });
 
     expect(result.isError()).toBe(true);
-    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(filesUploadV2).toHaveBeenCalledOnce();
   });
 });

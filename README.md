@@ -184,6 +184,7 @@ NODE_ENV=development  # production | development
 |-------|------|
 | `chat:write` | 메시지 발송 |
 | `commands` | 슬래시 커맨드 |
+| `files:write` | 메뉴 이미지를 Slack 파일로 업로드 |
 
 ### 3. Socket Mode 활성화
 
