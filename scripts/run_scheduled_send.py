@@ -41,7 +41,8 @@ def main() -> int:
         with urllib.request.urlopen(request, timeout=120) as response:
             body = response.read().decode("utf-8")
         payload = json.loads(body)
-        if not payload.get("success"):
+        data = payload.get("data")
+        if not payload.get("success") or not isinstance(data, dict) or data.get("success") is not True:
             raise RuntimeError("menu send endpoint reported failure")
         print(json.dumps({"ok": True, "result": "sent_or_skipped"}))
         return 0
