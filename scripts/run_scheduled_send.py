@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fcntl
 import json
 import os
 import sys
@@ -13,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 KST = ZoneInfo("Asia/Seoul")
 DEFAULT_URL = os.environ.get("MENU_BOT_SEND_URL", "http://127.0.0.1:3001/api/menu/send")
+LOCK_PATH = os.environ.get("MENU_BOT_SEND_LOCK", "/tmp/innovalley-menu-send.lock")
 
 
 def parse_now(value: str | None) -> dt.datetime:
@@ -37,9 +39,15 @@ def main() -> int:
         print(json.dumps({"ok": True, "result": "would_send", "now": now.isoformat()}))
         return 0
     try:
-        request = urllib.request.Request(args.url, method="POST")
-        with urllib.request.urlopen(request, timeout=120) as response:
-            body = response.read().decode("utf-8")
+        with open(LOCK_PATH, "w", encoding="utf-8") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                print(json.dumps({"ok": True, "result": "already_running"}))
+                return 0
+            request = urllib.request.Request(args.url, method="POST")
+            with urllib.request.urlopen(request, timeout=120) as response:
+                body = response.read().decode("utf-8")
         payload = json.loads(body)
         data = payload.get("data")
         if not payload.get("success") or not isinstance(data, dict) or data.get("success") is not True:
