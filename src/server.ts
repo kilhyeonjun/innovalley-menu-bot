@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { container } from 'tsyringe';
 import { createApp } from './app';
 import { env } from '@config/environment';
-import { SlackBotService, CronScheduler } from '@infrastructure/index';
+import { SlackBotService } from '@infrastructure/index';
 import { registerMenuCommand } from '@interface/slack';
 
 let slackApp: import('@slack/bolt').App | null = null;
@@ -41,14 +41,6 @@ async function bootstrap(): Promise<void> {
   } catch (error) {
     console.warn('⚠️ Slack Bot 초기화 실패:', error);
     console.warn('   Slack 관련 기능이 비활성화됩니다.');
-  }
-  // Cron 스케줄러 시작
-  try {
-    const scheduler = container.resolve(CronScheduler);
-    scheduler.start();
-    console.log('⏰ 스케줄러 시작됨 (매주 평일 09:00 KST)');
-  } catch (error) {
-    console.warn('⚠️ 스케줄러 초기화 실패:', error);
   }
   // Express 서버 시작
   app.listen(env.port, () => {
