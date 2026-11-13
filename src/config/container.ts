@@ -20,6 +20,7 @@ import {
   CheckAndSendMenuUseCase,
   GetCurrentMenuUseCase,
 } from '@application/use-cases';
+import { CronScheduler } from '@infrastructure/scheduling/CronScheduler';
 
 /**
  * DI 컨테이너 설정
@@ -40,12 +41,14 @@ export function setupContainer(): void {
     ICrawlerService,
     KakaoApiCrawlerService
   );
-  container.registerSingleton<ISlackService>(ISlackService, SlackBotService);
+  container.registerSingleton(SlackBotService);
+  container.register<ISlackService>(ISlackService, { useToken: SlackBotService });
 
   // Use Cases (자동 해결)
   container.register(CrawlWeeklyMenuUseCase, { useClass: CrawlWeeklyMenuUseCase });
   container.register(SendMenuToSlackUseCase, { useClass: SendMenuToSlackUseCase });
-  container.register(CheckAndSendMenuUseCase, { useClass: CheckAndSendMenuUseCase });
+  container.registerSingleton(CheckAndSendMenuUseCase);
+  container.registerSingleton(CronScheduler);
   container.register(GetCurrentMenuUseCase, { useClass: GetCurrentMenuUseCase });
 }
 

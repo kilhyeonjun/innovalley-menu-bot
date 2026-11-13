@@ -62,10 +62,11 @@ export class MenuPostBuilder {
    * 이번 주 게시물로 설정
    */
   thisWeek(): this {
-    const now = new Date();
+    const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // 월요일
-    startOfWeek.setHours(9, 0, 0, 0);
+    startOfWeek.setUTCDate(now.getUTCDate() - ((now.getUTCDay() + 6) % 7));
+    // Monday 09:00 KST is Monday 00:00 UTC.
+    startOfWeek.setUTCHours(0, 0, 0, 0);
     return this.withPublishedAt(startOfWeek);
   }
 
@@ -80,15 +81,14 @@ export class MenuPostBuilder {
   }
 
   private titleForWeekOf(date: Date): string {
-    const monday = new Date(date);
-    const dayOfWeek = monday.getDay();
-    const daysSinceMonday = (dayOfWeek + 6) % 7;
-    monday.setDate(date.getDate() - daysSinceMonday);
+    const monday = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+    const daysSinceMonday = (monday.getUTCDay() + 6) % 7;
+    monday.setUTCDate(monday.getUTCDate() - daysSinceMonday);
 
     const friday = new Date(monday);
-    friday.setDate(monday.getDate() + 4);
+    friday.setUTCDate(monday.getUTCDate() + 4);
 
-    const format = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+    const format = (d: Date) => `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
     return `주간메뉴[${format(monday)}-${format(friday)}]`;
   }
 

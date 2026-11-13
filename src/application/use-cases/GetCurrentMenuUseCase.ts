@@ -3,7 +3,8 @@ import { MenuPost } from '@domain/entities';
 import { IMenuPostRepository } from '@domain/repositories';
 import { ICrawlerService, ISlackService } from '@domain/services';
 import { Result } from '@shared/types/Result';
-import { DomainError, NotFoundError } from '@shared/errors/DomainError';
+import { DomainError, NotFoundError, ValidationError } from '@shared/errors/DomainError';
+import { getMenuSendNotBefore } from '@shared/menuSendPolicy';
 
 export interface GetCurrentMenuCriteria {
   userId: string;
@@ -38,16 +39,20 @@ export class GetCurrentMenuUseCase {
     const { userId, channel } = criteria;
 
     try {
+      if (Date.now() < getMenuSendNotBefore().getTime()) {
+        return Result.fail(new ValidationError('발송 시작 전입니다'));
+      }
       // 1. DB에서 이번 주 게시물 조회
       const cachedPost = await this.menuPostRepository.findThisWeek();
 
       if (cachedPost) {
         // 1-1. 캐시 히트: ephemeral 메시지로 응답
-        await this.slackService.sendEphemeralMenu({
+        const sendResult = await this.slackService.sendEphemeralMenu({
           menuPost: cachedPost,
           channel,
           userId,
         });
+        if (sendResult.isError()) return Result.fail(sendResult.error);
 
         return Result.ok({
           post: cachedPost,
@@ -75,11 +80,12 @@ export class GetCurrentMenuUseCase {
       const savedPost = await this.menuPostRepository.save(crawledPost);
 
       // 5. ephemeral 메시지로 응답
-      await this.slackService.sendEphemeralMenu({
+      const sendResult = await this.slackService.sendEphemeralMenu({
         menuPost: savedPost,
         channel,
         userId,
       });
+      if (sendResult.isError()) return Result.fail(sendResult.error);
 
       return Result.ok({
         post: savedPost,

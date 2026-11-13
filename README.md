@@ -21,9 +21,10 @@
 ## 기능
 
 ### 자동 발송
-- 매주 월요일 오전 9시(KST)에 카카오 채널에서 새 식단표 크롤링
-- 새 식단표 발견 시 지정된 Slack 채널로 자동 발송
-- 발송 실패 시 최대 6회까지 1시간 간격으로 재시도
+- 평일 09:00~15:00(KST) 매시 카카오 채널에서 이번 주 식단표 확인
+- 허용 시간대에 부팅하면 즉시 한 번 확인한 뒤 정기 확인 계속
+- 새 식단표 발견 시 지정된 Slack 채널로 발송하며, 실패하면 다음 정기 확인에서 재확인
+- `MENU_SEND_NOT_BEFORE` 이전에는 자동·수동 발송 모두 금지
 
 ### 슬래시 커맨드
 - `/식단` 입력 시 이번 주 식단표 즉시 조회
@@ -42,7 +43,7 @@
 │                         Interface Layer                          │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
 │  │ HTTP Routes │  │ Slack Cmds  │  │     Cron Scheduler      │  │
-│  │  /health    │  │   /식단     │  │  매주 월 09:00 KST      │  │
+│  │  /health    │  │   /식단     │  │ 평일 09~15시 KST 매시   │  │
 │  │  /api/menu  │  │             │  │                         │  │
 │  └──────┬──────┘  └──────┬──────┘  └────────────┬────────────┘  │
 └─────────┼────────────────┼──────────────────────┼───────────────┘
@@ -81,7 +82,7 @@
 | Slack | @slack/bolt | Socket Mode 기반 봇 |
 | ORM | Prisma | SQLite 데이터베이스 |
 | DI | TSyringe | 의존성 주입 컨테이너 |
-| 스케줄링 | node-cron | 주간 자동 발송 |
+| 스케줄링 | node-cron | 평일 09~15시 KST 매시 확인 및 부팅 catch-up |
 | 컨테이너 | Docker | 배포 환경 |
 
 ---
@@ -163,6 +164,10 @@ KAKAO_CHANNEL_URL=https://pf.kakao.com/_LCxlxlxb/posts
 # ─────────────────────────────────────────
 PORT=3000
 NODE_ENV=development  # production | development
+
+# Scheduler (배포 시 실제 값은 비밀 .env에서 주입)
+TZ=Asia/Seoul
+MENU_SEND_NOT_BEFORE=2026-11-16T09:00:00+09:00
 ```
 
 ---
@@ -226,28 +231,54 @@ NODE_ENV=development  # production | development
 npm run dev
 ```
 
-### Docker 배포
+### NAS Linux Docker 단독 배포
+
+Hermes 스케줄러나 호스트 Python 실행 없이 `menu-bot` 컨테이너 하나로 운영합니다. Dockerfile은 Node 20 slim 기반 멀티스테이지 빌드이며 NAS의 Linux amd64 Docker에서 그대로 빌드합니다.
+
+- 체크아웃 위치 예: 관리 PC의 `C:\projects\innovalley-menu-bot`. Docker CLI가 **회사 NAS worker의 Linux Docker 엔진**을 가리키는지 먼저 확인합니다. 아래 Compose 명령은 모두 동일 엔진·체크아웃·프로젝트에서 실행합니다.
+- 기본 프로젝트는 `innovalley-menu-bot`, 서비스는 `menu-bot`, 전용 볼륨은 `innovalley-menu-bot_menu-data`입니다. 고정 컨테이너 이름은 사용하지 않습니다.
+- 기존 NAS 컨테이너·다른 Compose 프로젝트는 변경하지 않습니다. 전역 prune, 다른 프로젝트의 down, `down -v`는 금지합니다.
+- 포트는 **NAS 루프백 `127.0.0.1:3001`**에만 바인딩됩니다. 관리 PC의 localhost가 아닙니다.
+- 재시작 정책은 `unless-stopped`; 로그는 `json-file`, 파일당 10MB·최대 3개입니다.
+- `.env`는 접근을 제한하고 커밋하지 않습니다. `.dockerignore`가 실제 환경파일·DB·개인키를 빌드 컨텍스트에서 제외합니다. 비밀파일을 소스에 다른 이름으로 넣지 않습니다.
+
+#### 최초 이관: 먼저 구 발송 주체 중지, DB 복원, 마지막에 시작
+
+**2026-11-09~13 주간은 다른 사람이 이미 게시했으므로 자동·수동·테스트 전송을 하지 않습니다. 최초 허용 시각은 `2026-11-16T09:00:00+09:00`입니다.** 비밀 `.env`에 이 값을 `MENU_SEND_NOT_BEFORE`로 설정하며, 시험 목적으로 과거 시각으로 바꾸거나 비우지 않습니다. `TZ=Asia/Seoul`은 Compose에서 전달합니다.
+
+1. 맥미니의 기존 봇, Hermes 예약, 호스트 실행기 등 기존 발송 경로를 모두 중지·비활성화합니다. NAS와 동시에 실행하지 않습니다.
+2. 기존 SQLite의 일관된 스냅샷을 만듭니다(SQLite `.backup` 사용 권장). 실행 중인 DB 본파일만 복사하면 WAL의 이력이 빠질 수 있으므로 금지합니다. 원본과 스냅샷을 안전하게 보관하고 NAS 발송을 시작하기 전에 복원을 끝냅니다.
+3. 스냅샷 전체를 이관합니다. `menu_posts`, `delivery_histories`, 마이그레이션 이력을 보존하며 초기 DB 생성·발송 이력 삭제로 대체하지 않습니다. 기존 주차 판정과 `(postId, channel)` 중복 방지를 유지하기 위해 기존 `SLACK_CHANNEL_ID`도 보존합니다.
+4. `.env.example`을 참고해 비밀 `.env`를 준비합니다. 자격증명·DB 내용·렌더링된 Compose 설정을 로그나 이슈에 붙이지 않습니다.
+5. 아래 명령은 이미지 빌드와 **미시작 컨테이너 생성**, DB 복원 후 시작 순서입니다. `menu.snapshot.db`는 관리 PC에서 접근 가능한 일관된 백업 경로로 바꿉니다. DB 파일을 전달하기 전에는 `up`을 실행하지 않습니다.
 
 ```bash
-# 빌드 및 실행
-docker-compose up -d
-
-# 로그 확인
-docker-compose logs -f menu-bot
-
-# 중지
-docker-compose down
+docker compose -p innovalley-menu-bot build menu-bot
+docker compose -p innovalley-menu-bot create menu-bot
+docker compose -p innovalley-menu-bot cp ./menu.snapshot.db menu-bot:/app/data/menu.db
+docker compose -p innovalley-menu-bot up -d menu-bot
+docker compose -p innovalley-menu-bot logs --tail 100 menu-bot
 ```
 
-### 실행 확인
+컨테이너 시작 시 `prisma migrate deploy`가 실행됩니다. 기존 이력이 보존됐는지 읽기 전용으로 확인하고, 배포 검증을 위해 `/api/menu/send`나 `/식단`을 호출하지 않습니다.
+
+#### 관측과 복구
+
+NAS worker 셸에서 다음 읽기 전용 상태 확인을 사용합니다.
 
 ```bash
-# 헬스체크
-curl http://localhost:3001/health
-
-# 응답 예시
-{"status":"ok","timestamp":"2026-01-24T12:00:00.000Z","uptime":100}
+curl http://127.0.0.1:3001/health
+docker compose -p innovalley-menu-bot ps
+docker compose -p innovalley-menu-bot logs --tail 100 menu-bot
 ```
+
+`/health`의 프로세스 상태뿐 아니라 scheduler의 실행 상태, 시작 허용 시각, 최근 체크 시각·결과·오류를 함께 확인합니다. 시작일 이전의 보류와 허용 시간대 밖의 대기는 정상이며, `healthy` 또는 프로세스 생존만으로 실제 스케줄 확인 성공을 판단하지 않습니다. 허용된 평일 09~15시에는 최근 체크가 진행되는지, 실패 후 다음 정기 확인이 이어지는지 관측합니다.
+
+- 일시 오류: 최근 체크 오류와 로그로 원인을 확인한 뒤 `docker compose -p innovalley-menu-bot restart menu-bot`으로 해당 서비스만 재시작합니다. 허용 시간대 재시작은 즉시 catch-up할 수 있으므로 DB·시작일·단일 발송 주체를 먼저 확인합니다.
+- 이미지 교체 전: 해당 서비스만 중지하고 현재 DB의 일관된 백업과 현재 이미지 ID/배포 커밋을 보관합니다. 볼륨을 삭제하지 않습니다.
+- 롤백: NAS 서비스를 먼저 중지합니다. 호환되는 직전 이미지/커밋으로 돌리고 **최신 발송 이력이 든 DB**를 유지합니다. 발송 뒤 오래된 DB로 되돌리면 중복 전송 위험이 있으므로 이력을 잃는 복원은 하지 않습니다.
+- DB 복원이 필요한 경우: 모든 발송 주체를 중지한 상태에서 최신 일관된 백업을 전용 볼륨의 `/app/data/menu.db`로 복원합니다. 기존 WAL/SHM 파일을 새 백업과 섞지 않습니다. 백업 이후 발송 여부가 불명확하면 발송을 재개하지 말고 이력부터 대조합니다.
+- 맥미니로 복귀해야 한다면 NAS가 완전히 중지된 뒤 최신 DB와 동일한 시작일 제한을 갖춘 실행기 **하나만** 켭니다. 제한 없는 구 Hermes/Python 실행기는 재활성화하지 않습니다.
 
 ---
 
@@ -255,16 +286,7 @@ curl http://localhost:3001/health
 
 ### GET /health
 
-서버 상태 확인
-
-**Response**
-```json
-{
-  "status": "ok",
-  "timestamp": "2026-01-24T12:00:00.000Z",
-  "uptime": 3600.123
-}
-```
+프로세스와 scheduler 운영 상태를 함께 반환합니다. scheduler의 실행 상태, 시작 허용 시각(`MENU_SEND_NOT_BEFORE`), 최근 체크 시각·결과·오류를 확인하여 단순 서버 생존과 구분합니다. HTTP 성공만 보지 말고 본문의 scheduler 상태를 확인합니다. 이 API 자체는 발송을 수행하지 않습니다.
 
 ### GET /api/menu/latest
 
@@ -322,24 +344,22 @@ curl http://localhost:3001/health
 
 ### 스케줄링
 
-`node-cron`을 사용하여 매주 월요일 오전 9시(KST)에 자동 실행:
+`node-cron`으로 평일 09~15시(KST) 매시 확인합니다.
 
+```text
+0 9-15 * * 1-5   Asia/Seoul
 ```
-┌───────────── 분 (0)
-│ ┌─────────── 시 (9)
-│ │ ┌───────── 일 (*)
-│ │ │ ┌─────── 월 (*)
-│ │ │ │ ┌───── 요일 (1 = 월요일)
-│ │ │ │ │
-0 9 * * 1   Asia/Seoul
-```
+
+허용 시간대 부팅 시 즉시 한 번 확인(catch-up)하고 이후 정기 확인을 이어갑니다. 시간대 밖 부팅은 다음 허용 시각을 기다립니다. `MENU_SEND_NOT_BEFORE` 이전에는 부팅 catch-up과 수동 API를 포함한 발송이 차단됩니다.
 
 **실행 흐름:**
-1. 카카오 채널에서 최신 식단표 크롤링
-2. DB에서 기존 발송 이력 확인
-3. 새 식단표이고 미발송 상태면 Slack 발송
-4. 발송 이력 저장 (중복 방지)
-5. 실패 시 1시간 후 재시도 (최대 6회)
+1. 시작 허용 시각과 스케줄 시간대 확인
+2. 카카오 채널에서 최신 식단표 크롤링 및 기존 주차 판정
+3. 기존 DB의 채널별 발송 이력 확인
+4. 이번 주 미발송 식단표만 Slack 발송하고 이력 저장
+5. 실패 시 오류를 health에 노출하고 다음 정기 확인에서 재확인
+
+`POST /api/menu/send`의 기존 `success`/`data` JSON 계약은 유지합니다. 수동 호출도 시작일 제한과 중복 방지를 우회하지 않습니다. 이번 주 건너뛰기를 검증하기 위해 실제 전송을 시도하지 않습니다.
 
 ### 데이터베이스 스키마
 

@@ -24,7 +24,7 @@ describe('SlackBotService', () => {
       const slackService = new SlackBotService();
 
       const menuPost = new MenuPostBuilder()
-        .withTitle('테스트 메뉴')
+        .thisWeek()
         .build();
 
       const testChannel = process.env.SLACK_TEST_CHANNEL || 'C1234567890';

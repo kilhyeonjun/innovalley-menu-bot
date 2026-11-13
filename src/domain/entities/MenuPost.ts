@@ -60,37 +60,32 @@ export class MenuPost {
    * 없으면 publishedAt 기준으로 판단
    */
   isThisWeek(): boolean {
-    const now = new Date();
+    const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const thisMonday = new Date(now);
-    const dayOfWeek = now.getDay();
-    const daysSinceMonday = (dayOfWeek + 6) % 7;
-    thisMonday.setDate(now.getDate() - daysSinceMonday);
-    thisMonday.setHours(0, 0, 0, 0);
+    const daysSinceMonday = (now.getUTCDay() + 6) % 7;
+    thisMonday.setUTCDate(now.getUTCDate() - daysSinceMonday);
+    thisMonday.setUTCHours(0, 0, 0, 0);
 
     // 제목에서 주간 범위 추출 시도
     const weekRange = this.getWeekRange();
     if (weekRange) {
       // 제목의 시작 날짜가 이번 주 월요일인지 확인
       const [startMonth, startDay] = weekRange.start.split('/').map(Number);
-      const titleMonday = new Date(now.getFullYear(), startMonth - 1, startDay);
+      const titleMonday = new Date(Date.UTC(now.getUTCFullYear(), startMonth - 1, startDay));
 
       // 연말/연초 처리: 1월인데 제목이 12월이면 작년
-      if (now.getMonth() === 0 && startMonth === 12) {
-        titleMonday.setFullYear(now.getFullYear() - 1);
+      if (now.getUTCMonth() === 0 && startMonth === 12) {
+        titleMonday.setUTCFullYear(now.getUTCFullYear() - 1);
       }
-      // 12월인데 제목이 1월이면 내년
-      if (now.getMonth() === 11 && startMonth === 1) {
-        titleMonday.setFullYear(now.getFullYear() + 1);
+      if (now.getUTCMonth() === 11 && startMonth === 1) {
+        titleMonday.setUTCFullYear(now.getUTCFullYear() + 1);
       }
 
-      return (
-        titleMonday.getMonth() === thisMonday.getMonth() &&
-        titleMonday.getDate() === thisMonday.getDate()
-      );
+      return titleMonday.getTime() === thisMonday.getTime();
     }
 
     // 제목에서 범위 못 찾으면 기존 publishedAt 로직 사용
-    return this.publishedAt >= thisMonday;
+    return this.publishedAt.getTime() >= thisMonday.getTime() - 9 * 60 * 60 * 1000;
   }
 
   /**
