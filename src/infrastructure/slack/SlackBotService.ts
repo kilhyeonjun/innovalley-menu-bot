@@ -10,6 +10,7 @@ import {
 import { Result } from '@shared/types/Result';
 import { SlackDeliveryError } from '@shared/errors/DomainError';
 import { SlackMessageBuilder } from './SlackMessageBuilder';
+import { getMenuSendNotBefore } from '@shared/menuSendPolicy';
 
 /**
  * Slack Bot Service
@@ -55,6 +56,12 @@ export class SlackBotService implements ISlackService {
     const { menuPost, channel } = criteria;
 
     try {
+      if (Date.now() < getMenuSendNotBefore().getTime()) {
+        return Result.fail(new SlackDeliveryError('발송 시작 전입니다'));
+      }
+      if (!menuPost.getWeekRange() || !menuPost.isThisWeek()) {
+        return Result.fail(new SlackDeliveryError('이번 주 제목의 식단표가 아닙니다'));
+      }
       const app = this.getApp();
       const image = await this.downloadImage(menuPost.imageUrl.value);
       const upload = (await app.client.files.uploadV2({
@@ -96,6 +103,9 @@ export class SlackBotService implements ISlackService {
     const { menuPost, channel, userId } = criteria;
 
     try {
+      if (Date.now() < getMenuSendNotBefore().getTime()) {
+        return Result.fail(new SlackDeliveryError('발송 시작 전입니다'));
+      }
       const app = this.getApp();
       const blocks = SlackMessageBuilder.buildMenuBlocks(menuPost);
 

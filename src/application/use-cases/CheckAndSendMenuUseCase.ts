@@ -4,6 +4,7 @@ import { ICrawlerService, ISlackService } from '@domain/services';
 import { DeliveryHistory } from '@domain/entities';
 import { Result } from '@shared/types/Result';
 import { DomainError } from '@shared/errors/DomainError';
+import { getMenuSendNotBefore } from '@shared/menuSendPolicy';
 
 export interface CheckAndSendMenuCriteria {
   channel: string;
@@ -26,6 +27,8 @@ export interface CheckAndSendMenuResult {
  */
 @injectable()
 export class CheckAndSendMenuUseCase {
+  private readonly inFlight = new Map<string, Promise<Result<CheckAndSendMenuResult, DomainError>>>();
+
   constructor(
     @inject(ICrawlerService)
     private readonly crawlerService: ICrawlerService,
@@ -37,14 +40,37 @@ export class CheckAndSendMenuUseCase {
     private readonly deliveryHistoryRepository: IDeliveryHistoryRepository
   ) {}
 
-  async execute(
+  execute(criteria: CheckAndSendMenuCriteria): Promise<Result<CheckAndSendMenuResult, DomainError>> {
+    try {
+      const startsAt = getMenuSendNotBefore();
+      if (Date.now() < startsAt.getTime()) {
+        return Promise.resolve(Result.ok({
+          success: true,
+          skipped: true,
+          attemptCount: 0,
+          skipReason: `발송 시작 전: ${startsAt.toISOString()}`,
+        }));
+      }
+    } catch (error) {
+      return Promise.resolve(Result.fail(error as DomainError));
+    }
+    const existing = this.inFlight.get(criteria.channel);
+    if (existing) return existing;
+    const pending = this.checkAndSend(criteria).finally(() => {
+      this.inFlight.delete(criteria.channel);
+    });
+    this.inFlight.set(criteria.channel, pending);
+    return pending;
+  }
+
+  private async checkAndSend(
     criteria: CheckAndSendMenuCriteria
   ): Promise<Result<CheckAndSendMenuResult, DomainError>> {
-    const { channel, maxRetries = 6, retryIntervalMs = 60 * 60 * 1000 } = criteria;
+    const { channel, maxRetries = 1, retryIntervalMs = 60 * 60 * 1000 } = criteria;
 
     // 1. 이번 주 게시물이 이미 발송되었는지 확인
     const thisWeekPost = await this.menuPostRepository.findThisWeek();
-    if (thisWeekPost) {
+    if (thisWeekPost?.getWeekRange() && thisWeekPost.isThisWeek()) {
       const existingHistory =
         await this.deliveryHistoryRepository.findByPostIdAndChannel(
           thisWeekPost.postId.value,
@@ -89,7 +115,7 @@ export class CheckAndSendMenuUseCase {
         );
 
         // 2-2. 이번 주 게시물인지 확인
-        if (!crawledPost.isThisWeek()) {
+        if (!crawledPost.getWeekRange() || !crawledPost.isThisWeek()) {
           console.log(
             `[CheckAndSend] 이번 주 게시물 아님 (${attempt}/${maxRetries}): ${crawledPost.title}`
           );

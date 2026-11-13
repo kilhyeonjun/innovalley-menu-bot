@@ -2,8 +2,14 @@ import 'reflect-metadata';
 import { container } from 'tsyringe';
 import { createApp } from './app';
 import { env } from '@config/environment';
-import { SlackBotService, CronScheduler } from '@infrastructure/index';
+import { SlackBotService } from '@infrastructure/index';
 import { registerMenuCommand } from '@interface/slack';
+import { CronScheduler } from '@infrastructure/scheduling/CronScheduler';
+import { Server } from 'node:http';
+
+let scheduler: CronScheduler | null = null;
+let server: Server | null = null;
+let shuttingDown = false;
 
 let slackApp: import('@slack/bolt').App | null = null;
 async function bootstrap(): Promise<void> {
@@ -25,33 +31,22 @@ async function bootstrap(): Promise<void> {
     // 슬래시 커맨드 등록
     registerMenuCommand(slackApp);
     if (env.slackAppToken) {
-      // Slack Socket Mode 연결을 백그라운드로 시작.
-      // 외부 인터넷이 끊긴 상황에서 await로 막으면 cron/Express 부팅이 함께 중단되어
-      // /health · /api/menu/send · 주간 스케줄러까지 모두 정지한다. 분리해서 startup deadlock을 막는다.
+      // Keep HTTP startup independent, but never hide a failed Slack initialization as healthy.
       slackApp
         .start()
         .then(() => console.log('⚡ Slack Bot 시작됨 (Socket Mode)'))
-        .catch((e) =>
-          console.warn(
-            '⚠️ Slack Bot 시작 실패 (백그라운드 재시도):',
-            e instanceof Error ? e.message : String(e)
-          )
-        );
+        .catch((error) => {
+          console.error('❌ Slack Bot 시작 실패:', error);
+          void shutdown('SLACK_ERROR');
+        });
     }
   } catch (error) {
-    console.warn('⚠️ Slack Bot 초기화 실패:', error);
-    console.warn('   Slack 관련 기능이 비활성화됩니다.');
+    throw new Error(`Slack Bot 초기화 실패: ${error instanceof Error ? error.message : String(error)}`);
   }
-  // Cron 스케줄러 시작
-  try {
-    const scheduler = container.resolve(CronScheduler);
-    scheduler.start();
-    console.log('⏰ 스케줄러 시작됨 (매주 평일 09:00 KST)');
-  } catch (error) {
-    console.warn('⚠️ 스케줄러 초기화 실패:', error);
-  }
+  scheduler = container.resolve(CronScheduler);
+  scheduler.start();
   // Express 서버 시작
-  app.listen(env.port, () => {
+  server = app.listen(env.port, () => {
     console.log(`\n✅ 서버 실행 중: http://localhost:${env.port}`);
     console.log(`   환경: ${env.nodeEnv}`);
     console.log(`\n📋 엔드포인트:`);
@@ -60,12 +55,24 @@ async function bootstrap(): Promise<void> {
     console.log(`\n🤖 Slack 커맨드:`);
     console.log(`   /식단                  - 이번 주 식단표 조회`);
   });
+  server.on('error', (error) => {
+    console.error('❌ HTTP 서버 실패:', error);
+    void shutdown('HTTP_ERROR');
+  });
 }
 
 // Graceful shutdown
 async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.log(`\n👋 ${signal} 수신, 서버 종료 중...`);
   try {
+    // Stop accepting HTTP work, then drain cron and existing requests before exiting.
+    const closed = server
+      ? new Promise<void>((resolve, reject) => server!.close((error) => error ? reject(error) : resolve()))
+      : Promise.resolve();
+    await scheduler?.stop();
+    await closed;
     if (slackApp) {
       await slackApp.stop();
       console.log('✅ Slack Bot 정상 종료');
@@ -73,7 +80,7 @@ async function shutdown(signal: string): Promise<void> {
   } catch (error) {
     console.error('⚠️ Slack Bot 종료 실패:', error);
   }
-  process.exit(0);
+  process.exit(signal === 'HTTP_ERROR' || signal === 'SLACK_ERROR' ? 1 : 0);
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));

@@ -3,7 +3,7 @@ import { GetCurrentMenuUseCase } from '@application/use-cases/GetCurrentMenuUseC
 import { ICrawlerService, ISlackService } from '@domain/services';
 import { IMenuPostRepository } from '@domain/repositories';
 import { Result } from '@shared/types/Result';
-import { CrawlingError, NotFoundError } from '@shared/errors/DomainError';
+import { CrawlingError, NotFoundError, SlackDeliveryError } from '@shared/errors/DomainError';
 import { MenuPostBuilder } from '../../fixtures/builders';
 
 describe('GetCurrentMenuUseCase', () => {
@@ -41,6 +41,7 @@ describe('GetCurrentMenuUseCase', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.useRealTimers();
   });
 
@@ -49,6 +50,28 @@ describe('GetCurrentMenuUseCase', () => {
       userId: 'U1234567890',
       channel: 'C1234567890',
     };
+
+    it('시작일 전에는 캐시가 있어도 식단을 반환하거나 발송하지 않는다', async () => {
+      vi.stubEnv('MENU_SEND_NOT_BEFORE', '2026-11-16T09:00:00+09:00');
+      vi.setSystemTime(new Date('2026-11-13T11:00:00+09:00'));
+      vi.mocked(mockMenuPostRepository.findThisWeek).mockResolvedValue(new MenuPostBuilder().thisWeek().build());
+      const result = await useCase.execute(criteria);
+      expect(result.isError()).toBe(true);
+      expect(mockMenuPostRepository.findThisWeek).not.toHaveBeenCalled();
+      expect(mockSlackService.sendEphemeralMenu).not.toHaveBeenCalled();
+    });
+
+    it.each(['cache', 'crawl'])('Slack 실패시 %s 식단을 성공으로 반환하지 않는다', async (source) => {
+      const post = new MenuPostBuilder().thisWeek().build();
+      vi.mocked(mockMenuPostRepository.findThisWeek).mockResolvedValue(source === 'cache' ? post : null);
+      vi.mocked(mockCrawlerService.crawlLatestMenu).mockResolvedValue(Result.ok({ post, isNew: true }));
+      vi.mocked(mockMenuPostRepository.save).mockResolvedValue(post);
+      const failure = new SlackDeliveryError('blocked');
+      vi.mocked(mockSlackService.sendEphemeralMenu).mockResolvedValue(Result.fail(failure));
+      const result = await useCase.execute(criteria);
+      expect(result.isError()).toBe(true);
+      expect(result.error).toBe(failure);
+    });
 
     it('캐시된 게시물이 있으면 즉시 반환한다', async () => {
       const cachedPost = new MenuPostBuilder()

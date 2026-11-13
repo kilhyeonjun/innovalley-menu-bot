@@ -3,6 +3,7 @@ import { App } from '@slack/bolt';
 import type { KnownBlock } from '@slack/types';
 import { GetCurrentMenuUseCase } from '@application/use-cases';
 import { SlackMessageBuilder } from '@infrastructure/slack';
+import { getMenuSendNotBefore } from '@shared/menuSendPolicy';
 
 export function registerMenuCommand(app: App): void {
   // /식단 커맨드 등록
@@ -14,6 +15,13 @@ export function registerMenuCommand(app: App): void {
     console.log(`[MenuCommand] /식단 호출 (user: ${userId}, channel: ${channel})`);
 
     try {
+      if (Date.now() < getMenuSendNotBefore().getTime()) {
+        await respond({
+          response_type: 'ephemeral',
+          blocks: SlackMessageBuilder.buildErrorBlocks('발송 시작 전입니다'),
+        });
+        return;
+      }
       // 로딩 메시지 표시
       await respond({
         response_type: 'ephemeral',

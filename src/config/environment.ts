@@ -1,3 +1,5 @@
+import { getMenuSendNotBefore } from '@shared/menuSendPolicy';
+
 /**
  * 환경변수 설정
  */
@@ -5,6 +7,7 @@ export interface Environment {
   // Server
   port: number;
   nodeEnv: string;
+  menuSendNotBefore: string;
 
   // Database
   databaseUrl: string;
@@ -27,6 +30,7 @@ export function loadEnvironment(): Environment {
     // Server
     port: parseInt(process.env.PORT || '3000', 10),
     nodeEnv: process.env.NODE_ENV || 'development',
+    menuSendNotBefore: getMenuSendNotBefore().toISOString(),
 
     // Database
     databaseUrl: process.env.DATABASE_URL || 'file:./dev.db',
